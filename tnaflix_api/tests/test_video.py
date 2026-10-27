@@ -68,8 +68,13 @@ async def test_live_video():
     video = None
     try:
         async for res in client.search("blonde", pages=1):
-            video = res.item
-            break
+            if res.item:
+                if not video:
+                    video = res.item
+                parts = (res.item.length or "").split(":")
+                if len(parts) == 2 and int(parts[0]) <= 2:
+                    video = res.item
+                    break
     except Exception as e:
         pytest.skip(f"Live network unavailable or connection reset by peer: {e}")
 

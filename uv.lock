@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [[package]]
@@ -166,16 +166,16 @@ wheels = [
 
 [[package]]
 name = "eaf-base-api"
-version = "4.2.2"
+version = "4.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
     { name = "curl-cffi" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1f/a6/103fb8441d55839c4df48fb24e329844ec178f307c792da359a7a64a9662/eaf_base_api-4.2.2.tar.gz", hash = "sha256:32c5a2413b6827fcd7965a986e2f96e566faf5b1f067c8e517bd9d462ccb456e", size = 75497, upload-time = "2026-10-17T14:29:10.053Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/14/d53d4cbde679d694dc7d0095591af45f757343e46dd19a2e17e385f47abd/eaf_base_api-4.2.5.tar.gz", hash = "sha256:6947acf9e543840cfd7b0c418f8676993ca6aa80d89b1acc5dec3a698526ccc7", size = 77294, upload-time = "2026-10-27T20:25:52.981Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f8/80/225ccab7131a45a12a86e4287ba00e9fab907e52a480c49b270abd432f6a/eaf_base_api-4.2.2-py3-none-any.whl", hash = "sha256:2499e3239ba8ba8358d83f00c186836ddc8951630bd07ffb2884f8aa6671c366", size = 76711, upload-time = "2026-10-17T14:29:08.492Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/ff/a4bdb5ae05d713a01795a448ffb1f04363b2a4baf25c1f7db29fd7e6a139/eaf_base_api-4.2.5-py3-none-any.whl", hash = "sha256:31f3e8e2125b5abf9bcebf9c5e8d8027b1dd198d4132efeff9a39ca7a460e143", size = 77916, upload-time = "2026-10-27T20:25:51.341Z" },
 ]
 
 [[package]]
@@ -269,7 +269,7 @@ wheels = [
 
 [[package]]
 name = "unofficial-api-for-tnaflix"
-version = "1.0"
+version = "1.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "curl-cffi" },
@@ -287,7 +287,7 @@ av = [
 requires-dist = [
     { name = "av", marker = "extra == 'av'" },
     { name = "curl-cffi" },
-    { name = "eaf-base-api", specifier = ">=4.2.2" },
+    { name = "eaf-base-api", specifier = ">=4.2.5" },
     { name = "m3u8" },
     { name = "selectolax" },
 ]

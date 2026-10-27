@@ -52,7 +52,7 @@ def extractor_video_list(html: str, base_url: str = "https://www.tnaflix.com") -
         title_node = card.css_first("a.video-title") or card.css_first(".video-title")
         title = title_node.text(strip=True) if title_node else (img.attributes.get("alt") if img else None)
 
-        author_node = card.css_first('a[href*="/profile/"]')
+        author_node = card.css_first('a[href*="/profile/"], a[href*="/channel/"]')
         author_name = author_node.text(strip=True) if author_node else None
         author_link = urljoin(base_url, author_node.attributes.get("href", "")) if author_node else None
 

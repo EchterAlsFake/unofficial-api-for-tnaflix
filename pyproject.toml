@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "unofficial-api-for-tnaflix"
-version = "1.0"
+version = "1.0.1"
 description = "An asynchronous Python API Wrapper and Scraper for tnaflix.com"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.12"
@@ -27,7 +27,7 @@ keywords = [
 
 dependencies = [
     "selectolax",
-    "eaf-base-api>=4.2.2",
+    "eaf-base-api>=4.2.5",
     "curl-cffi",
     "m3u8",
 ]

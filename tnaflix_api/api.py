@@ -89,6 +89,19 @@ class Video(BaseMedia):
 
     async def _load_html(self) -> dict[str, object]:
         html_content = await get_html_content(core=self.core, url=self.url, owner=self)
+        parser = LexborHTMLParser(html_content)
+        canonical = parser.css_first("link[rel='canonical']")
+        if canonical:
+            c_href = canonical.attributes.get("href", "")
+            if c_href and "/video" in c_href:
+                full_url = urljoin(BASE_URL, c_href)
+                if full_url != self.url and not full_url.endswith(f"/video/{self.url.split('/')[-1]}"):
+                    try:
+                        canonical_html = await get_html_content(core=self.core, url=full_url, owner=self)
+                        html_content = canonical_html
+                        self.url = full_url
+                    except Exception:
+                        pass
         return await asyncio.to_thread(self._extract_html, html_content, self.url)
 
     @staticmethod
@@ -186,7 +199,11 @@ class Video(BaseMedia):
             embed_url = f"https://player.{domain_part}/video/{video_id}"
 
         # Author / Uploader
-        author_node = parser.css_first('.video-detail-badges a[href*="/profile/"]:not(.badge-kiss)')
+        author_node = parser.css_first(
+            '.video-detail-badges a.badge-video-info:not(.badge-kiss), '
+            '.video-detail-badges a[href*="/profile/"]:not(.badge-kiss), '
+            '.video-detail-badges a[href*="/channel/"]:not(.badge-kiss)'
+        )
         author_name = author_node.text(strip=True) if author_node else None
         author_link = urljoin(base_url, author_node.attributes.get("href", "")) if author_node else None
         author_verified = ("badge-verified" in (author_node.attributes.get("class") or "")) if author_node else False
@@ -203,7 +220,7 @@ class Video(BaseMedia):
         # Categories & Tags
         categories = []
         tags = []
-        for c_node in parser.css('.video-detail-badges a.badge-video:not([href*="/profile/"])'):
+        for c_node in parser.css('.video-detail-badges a.badge-video:not([href*="/profile/"]):not([href*="/channel/"]):not(.badge-video-info)'):
             c_name = c_node.text(strip=True)
             c_url = urljoin(base_url, c_node.attributes.get("href", ""))
             categories.append({"name": c_name, "url": c_url})
@@ -219,9 +236,11 @@ class Video(BaseMedia):
         rate_icon = parser.css_first(".video-detail-badges i.icon-thumb-up")
         rating_percent = rate_icon.parent.text(strip=True) if (rate_icon and rate_icon.parent) else None
 
-        try:
-            rating_votes = str(int(likes) + int(dislikes))
-        except (ValueError, TypeError):
+        l_cnt = _parse_count(likes)
+        d_cnt = _parse_count(dislikes)
+        if l_cnt is not None and d_cnt is not None:
+            rating_votes = str(l_cnt + d_cnt)
+        else:
             rating_votes = None
 
         eye_icon = parser.css_first(".video-detail-badges i.icon-eye")
@@ -233,6 +252,8 @@ class Video(BaseMedia):
             for s in video_node.css("source"):
                 src = s.attributes.get("src")
                 size_str = s.attributes.get("size")
+                if not size_str and src and (m := re.search(r"(\d+)p(?:\.mp4)?", src)):
+                    size_str = m.group(1)
                 if src and size_str:
                     try:
                         direct_download_urls[int(size_str)] = src
@@ -298,7 +319,6 @@ class Video(BaseMedia):
 
         return await self.core.legacy_download(url=download_url, configuration=config)
 
-    @property
     async def get_author(self, load_html: bool = True) -> Profile | Channel | None:
         url = await self.get_field("author_link")
         if url:
@@ -313,11 +333,10 @@ class Video(BaseMedia):
             return profile
         return None
 
-    @property
-    async def get_pornstars(self, load_html: bool = True) -> AsyncGenerator[Profile, None]:
+    async def get_pornstars(self, load_html: bool = True) -> AsyncGenerator[Pornstar, None]:
         pornstars_urls = await self.get_field("pornstars_urls")
         for url in (pornstars_urls or []):
-            star = Profile(url=url, core=self.core)
+            star = Pornstar(url=url, core=self.core)
             if load_html:
                 await star.load_sources("html")
             yield star
@@ -625,29 +644,65 @@ class Client:
         self.helper = Helper(core=self.core, constructor=Video)
         logger.info("Client initialized")
 
-    async def get_video(self, url: str, load_html: bool = True) -> Video:
+    @staticmethod
+    def _normalize_video_url(url: str, base_url: str = BASE_URL) -> str:
+        url = url.strip()
         if not url.startswith(("http://", "https://")):
             clean = url.strip("/")
-            url = f"{BASE_URL}/{clean}" if clean.startswith("video") else f"{BASE_URL}/video/{clean}"
+            if m := re.match(r"^(?:videos?/)?(?:video)?(\d+)$", clean, re.IGNORECASE):
+                return f"{base_url}/video/{m.group(1)}"
+            return f"{base_url}/{clean}"
+        p = urlparse(url)
+        if "player." in p.netloc:
+            netloc = p.netloc.replace("player.", "www.")
+            return p._replace(netloc=netloc).geturl()
+        return url
+
+    @staticmethod
+    def _normalize_profile_url(url: str, base_url: str = BASE_URL) -> str:
+        url = url.strip()
+        if not url.startswith(("http://", "https://")):
+            clean = url.strip("/")
+            clean = re.sub(r"^(?:profiles?|pornstars?)/", "", clean, flags=re.IGNORECASE).strip("/")
+            return f"{base_url}/profile/{clean}"
+        p = urlparse(url)
+        new_path = re.sub(r"^/(?:profiles?|pornstars?)/", "/profile/", p.path, flags=re.IGNORECASE)
+        return p._replace(path=new_path).geturl()
+
+    @staticmethod
+    def _normalize_channel_url(url: str, base_url: str = BASE_URL) -> str:
+        url = url.strip()
+        if not url.startswith(("http://", "https://")):
+            clean = url.strip("/")
+            clean = re.sub(r"^channels?/", "", clean, flags=re.IGNORECASE).strip("/")
+            return f"{base_url}/channel/{clean}"
+        p = urlparse(url)
+        new_path = re.sub(r"^/channels?/", "/channel/", p.path, flags=re.IGNORECASE)
+        return p._replace(path=new_path).geturl()
+
+    async def get_video(self, url: str, load_html: bool = True) -> Video:
+        url = self._normalize_video_url(url)
         video = Video(url=url, core=self.core)
         if load_html:
             await video.load_sources("html")
         return video
 
     async def get_profile(self, url: str, load_html: bool = True) -> Profile:
-        if not url.startswith(("http://", "https://")):
-            url = f"{BASE_URL}/profile/{url.strip('/')}"
+        url = self._normalize_profile_url(url)
         profile = Profile(url=url, core=self.core)
         if load_html:
             await profile.load_sources("html")
         return profile
 
-    async def get_pornstar(self, url: str, load_html: bool = True) -> Profile:
-        return await self.get_profile(url=url, load_html=load_html)
+    async def get_pornstar(self, url: str, load_html: bool = True) -> Pornstar:
+        url = self._normalize_profile_url(url)
+        pornstar = Pornstar(url=url, core=self.core)
+        if load_html:
+            await pornstar.load_sources("html")
+        return pornstar
 
     async def get_channel(self, url: str, load_html: bool = True) -> Channel:
-        if not url.startswith(("http://", "https://")):
-            url = f"{BASE_URL}/channel/{url.strip('/')}"
+        url = self._normalize_channel_url(url)
         channel = Channel(url=url, core=self.core)
         if load_html:
             await channel.load_sources("html")
@@ -668,7 +723,10 @@ class Client:
         if sorting_sort and sorting_sort != Sort.Sort_relevance:
             qs["sort"] = [str(sorting_sort)]
         if sorting_date and sorting_date != SortDate.Sort_all:
-            qs["date"] = [str(sorting_date)]
+            date_val = str(sorting_date)
+            u_val = "day" if date_val in ("today", "day") else date_val
+            qs["u"] = [u_val]
+            qs["date"] = [date_val]
 
         new_query = urlencode(qs, doseq=True)
         search_url = urlunparse(p._replace(query=new_query))
