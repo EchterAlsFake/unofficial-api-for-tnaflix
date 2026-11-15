@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from base_api import paginated_stream, PageInfo, validate_pagination, update_url_query
+from base_api.modules.pagination import linked_page
+
 import argparse
 import asyncio
 import html
@@ -385,28 +388,22 @@ class BaseProfileChannel(BaseMedia):
     loader_methods: ClassVar[dict[str, str]] = {"html": "_load_html"}
 
     def videos(
-        self,
-        pages: int = 1,
-        iterator_config: IteratorConfig | None = None,
-    ) -> AsyncGenerator[ScrapeResult[Video], None]:
-        p = urlparse(self.url)
-        qs = parse_qs(p.query)
-
-        page_urls = []
-        for page in range(1, pages + 1):
-            qs_page = qs.copy()
-            qs_page["page"] = [str(page)]
-            new_query = urlencode(qs_page, doseq=True)
-            page_urls.append(urlunparse(p._replace(query=new_query)))
-
-        if iterator_config is None:
-            iterator_config = make_iterator_config()
-
-        return scrape_stream(
+        self, pages: int | str = 1, iterator_config=None, *, start_page: int = 1
+    ):
+        validate_pagination(pages, start_page)
+        page_url = lambda page: update_url_query(
+            self.resolved_url or self.url, page=page
+        )
+        return paginated_stream(
             core=self.core,
             constructor=Video,
-            target_page_urls=page_urls,
+            page_url=page_url,
             item_extractor=extractor_video_list,
+            pages=pages,
+            start_page=start_page,
+            page_info=lambda content, page, rows: _pagination_info(
+                content, page, rows, page_url=page_url
+            ),
             iterator_config=iterator_config,
         )
 
@@ -708,15 +705,17 @@ class Client:
             await channel.load_sources("html")
         return channel
 
-
     def search(
         self,
         query: str,
         sorting_sort: str | Sort = Sort.Sort_relevance,
         sorting_date: str | SortDate = SortDate.Sort_all,
-        pages: int = 1,
+        pages: int | str = 1,
         iterator_config: IteratorConfig | None = None,
+        *,
+        start_page: int = 1,
     ) -> AsyncGenerator[ScrapeResult[Video], None]:
+        validate_pagination(pages, start_page)
         p = urlparse(f"{BASE_URL}/search")
         qs = parse_qs(p.query)
         qs["what"] = [query]
@@ -727,22 +726,34 @@ class Client:
             u_val = "day" if date_val in ("today", "day") else date_val
             qs["u"] = [u_val]
             qs["date"] = [date_val]
-
         new_query = urlencode(qs, doseq=True)
         search_url = urlunparse(p._replace(query=new_query))
-
-        page_urls = [f"{search_url}&page={page}" for page in range(1, pages + 1)] if pages > 0 else []
-
+        page_url = lambda page: f"{search_url}&page={page}"
         if iterator_config is None:
             iterator_config = make_iterator_config()
-
-        return scrape_stream(
+        return paginated_stream(
             core=self.core,
             constructor=Video,
-            target_page_urls=page_urls,
             item_extractor=extractor_video_list,
             iterator_config=iterator_config,
+            page_url=page_url,
+            pages=pages,
+            start_page=start_page,
+            page_info=lambda content, page, rows: _pagination_info(
+                content, page, rows, page_url=page_url
+            ),
         )
+
+
+def _pagination_info(content, page, rows, *, page_url):
+    info = linked_page(content, page, rows, page_url=page_url)
+    if info.next_url:
+        return info
+    if not rows:
+        return PageInfo(terminal=True)
+    # Live studio profiles can report Videos(0) and omit the pager even
+    # though ordinary later numbered pages contain real listing entries.
+    return PageInfo(terminal=False, next_url=page_url(page + 1))
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -814,3 +825,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

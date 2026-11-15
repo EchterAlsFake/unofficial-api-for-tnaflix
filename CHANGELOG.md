@@ -1,3 +1,18 @@
+# 2.0.0
+
+Release 2.0.0
+
+Update pagination handling, validation, and documentation.
+
+Changes since 1.0.1:
+
+```text
+README.md          | 14 +++++++++++
+ pyproject.toml     |  4 ++--
+ tnaflix_api/api.py | 68 ++++++++++++++++++++++++++++++++----------------------
+ 3 files changed, 56 insertions(+), 30 deletions(-)
+```
+
 # Changelog
 
 ## 1.0.1 — 2026-10-27
